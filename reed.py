@@ -1,13 +1,23 @@
 import datetime
+import json
+import os
 import requests
 from requests.auth import HTTPBasicAuth
+
+import pandas as pd
+from urllib.parse import urlencode
+from openpyxl.styles import PatternFill, Font
+from openpyxl.utils import get_column_letter
 
 ROOT_URL = 'https://www.reed.co.uk/api/1.0/search?'
 JOB_DETAILS_ROOT = 'https://www.reed.co.uk/api/1.0/jobs/'
 
 class ReedClient:
-    def __init__(self, api_key: str) -> None:
+    
+    def _init_(self, api_key: str) -> None:
         self.api_key = api_key
+        self.searches_directory = "searches"
+        os.makedirs(self.searches_directory, exist_ok=True)
 
     def search(self, **args) -> list:
         '''
@@ -31,11 +41,15 @@ class ReedClient:
             
             data = response.json()
             total_results = data['totalResults']
+            for job in data['results']:
+                del job['employerId']
+                del job['employerProfileId']
+                del job['employerProfileName']
             jobs = data['results']
             total_jobs.extend(jobs)
-            print(total_jobs)
 
             results_fetched += len(jobs)
+            print(results_fetched)
             if results_fetched >= total_results:
                 break
 
@@ -66,3 +80,36 @@ class ReedClient:
             r.raise_for_status()
 
         return r.json()
+    
+    def json(self, results, filename) -> None:
+        json_filename = os.path.join(self.searches_directory, filename)
+        with open(f"{json_filename}.json","w",encoding="utf8") as file:
+            json.dump(results, file, indent=4)
+
+    def excel(self, results, filename) -> None:
+        excel_filename = os.path.join(self.searches_directory, f"{filename}.xlsx")
+        df = pd.DataFrame(results)
+        with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Results')
+            workbook = writer.book
+            worksheet = writer.sheets['Results']
+            worksheet.freeze_panes = 'A2'
+            worksheet.auto_filter.ref = worksheet.dimensions
+            header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+            bold_font = Font(bold=True)
+            for col in range(1, len(df.columns) + 1):
+                cell = worksheet[f"{get_column_letter(col)}1"]
+                cell.fill = header_fill
+                cell.font = bold_font
+                max_length = 0
+                column = f'{get_column_letter(col)}:{get_column_letter(col)}'
+                for cell in worksheet[column]:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2) * 1.2
+                worksheet.column_dimensions[get_column_letter(col)].width = adjusted_width
+
+        os.startfile(excel_filename)
