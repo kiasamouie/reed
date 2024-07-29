@@ -5,7 +5,6 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 import pandas as pd
-from urllib.parse import urlencode
 from openpyxl.styles import PatternFill, Font
 from openpyxl.utils import get_column_letter
 
@@ -14,10 +13,10 @@ JOB_DETAILS_ROOT = 'https://www.reed.co.uk/api/1.0/jobs/'
 
 class ReedClient:
     
-    def _init_(self, api_key: str) -> None:
+    def __init__(self, api_key: str) -> None:
         self.api_key = api_key
-        self.searches_directory = "searches"
-        os.makedirs(self.searches_directory, exist_ok=True)
+        self.save_directory = "searches"
+        os.makedirs(self.save_directory, exist_ok=True)
 
     def search(self, **args) -> list:
         '''
@@ -31,7 +30,7 @@ class ReedClient:
         '''
         auth = HTTPBasicAuth(username=self.api_key, password='')
         args.setdefault('resultsToTake', 100)  # Set default batch size
-        total_jobs = []
+        jobs = []
         results_fetched = 0
 
         while True:
@@ -42,11 +41,12 @@ class ReedClient:
             data = response.json()
             total_results = data['totalResults']
             for job in data['results']:
+                if job['minimumSalary'] is None:
+                    continue
                 del job['employerId']
                 del job['employerProfileId']
                 del job['employerProfileName']
-            jobs = data['results']
-            total_jobs.extend(jobs)
+                jobs.append(job)
 
             results_fetched += len(jobs)
             print(results_fetched)
@@ -55,8 +55,8 @@ class ReedClient:
 
             args['resultsToSkip'] = results_fetched
 
-        total_jobs.sort(key=lambda x: datetime.datetime.strptime(x['date'], "%d/%m/%Y"), reverse=True)
-        return total_jobs
+        jobs.sort(key=lambda x: datetime.datetime.strptime(x['date'], "%d/%m/%Y"), reverse=True)
+        return jobs
     
     def job_details(self, job_id: int) -> dict:
         '''
@@ -82,14 +82,14 @@ class ReedClient:
         return r.json()
     
     def json(self, results, filename) -> None:
-        json_filename = os.path.join(self.searches_directory, filename)
-        with open(f"{json_filename}.json","w",encoding="utf8") as file:
+        filename = os.path.join(self.save_directory, filename)
+        with open(f"{filename}.json","w",encoding="utf8") as file:
             json.dump(results, file, indent=4)
 
     def excel(self, results, filename) -> None:
-        excel_filename = os.path.join(self.searches_directory, f"{filename}.xlsx")
+        filename = os.path.join(self.save_directory, f"{filename}.xlsx")
         df = pd.DataFrame(results)
-        with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
+        with pd.ExcelWriter(filename, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Results')
             workbook = writer.book
             worksheet = writer.sheets['Results']
@@ -111,5 +111,4 @@ class ReedClient:
                         pass
                 adjusted_width = (max_length + 2) * 1.2
                 worksheet.column_dimensions[get_column_letter(col)].width = adjusted_width
-
-        os.startfile(excel_filename)
+        os.startfile(filename)

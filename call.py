@@ -1,4 +1,3 @@
-import pandas as pd
 from reed import ReedClient
 from urllib.parse import urlencode
 
