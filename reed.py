@@ -44,7 +44,9 @@ class ReedClient:
                 if job['minimumSalary'] is None:
                     continue
                 del job['employerId']
+                del job['jobDescription']
                 del job['employerProfileId']
+                del job['currency']
                 del job['employerProfileName']
                 jobs.append(job)
 
